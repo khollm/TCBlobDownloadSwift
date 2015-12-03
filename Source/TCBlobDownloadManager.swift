@@ -3,6 +3,7 @@
 //  TCBlobDownloadSwift
 //
 //  Created by Thibault Charbonnier on 30/12/14.
+//  Modified by Kevin Hollmann on 3/12/15
 //  Copyright (c) 2014 thibaultcha. All rights reserved.
 //
 
@@ -14,7 +15,7 @@ public let kTCBlobDownloadErrorDomain = "com.tcblobdownloadswift.error"
 public let kTCBlobDownloadErrorDescriptionKey = "TCBlobDownloadErrorDescriptionKey"
 public let kTCBlobDownloadErrorHTTPStatusKey = "TCBlobDownloadErrorHTTPStatusKey"
 public let kTCBlobDownloadErrorFailingURLKey = "TCBlobDownloadFailingURLKey"
-
+let  downloadDelegate = DownloadDelegate()
 public enum TCBlobDownloadError: Int {
     case TCBlobDownloadHTTPError = 1
 }
@@ -26,9 +27,8 @@ public class TCBlobDownloadManager {
     public static let sharedInstance = TCBlobDownloadManager()
 
     /// Instance of the underlying class implementing `NSURLSessionDownloadDelegate`.
-    private let delegate: DownloadDelegate
 
-    /// If `true`, downloads will start immediatly after being created. `true` by default.
+    /// If `true`, download will start immediatly after being created. `true` by default.
     public var startImmediatly = true
 
     /// The underlying `NSURLSession`.
@@ -37,12 +37,13 @@ public class TCBlobDownloadManager {
     /**
         Custom `NSURLSessionConfiguration` init.
 
-        :param: config The configuration used to manage the underlying session.
+        :parameter: config The configuration used to manage the underlying session.
     */
     public init(config: NSURLSessionConfiguration) {
-        self.delegate = DownloadDelegate()
-        self.session = NSURLSession(configuration: config, delegate: self.delegate, delegateQueue: nil)
+        
+        self.session = NSURLSession(configuration: config, delegate: downloadDelegate, delegateQueue: nil)
         self.session.sessionDescription = "TCBlobDownloadManger session"
+        
     }
 
     /**
@@ -57,25 +58,23 @@ public class TCBlobDownloadManager {
     /**
         Base method to start a download, called by other download methods.
     
-        :param: download Download to start.
+        :parameter: download Download to start.
     */
     private func downloadWithDownload(download: TCBlobDownload) -> TCBlobDownload {
-        self.delegate.downloads[download.downloadTask.taskIdentifier] = download
-
+        downloadDelegate.setNew(download.downloadTask.taskIdentifier, download: download)
         if self.startImmediatly {
             download.downloadTask.resume()
         }
-
         return download
     }
 
     /**
         Start downloading the file at the given URL.
     
-        :param: url NSURL of the file to download.
-        :param: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
-        :param: name Name to give to the file once the download is completed.
-        :param: delegate An eventual delegate for this download.
+        :parameter: url NSURL of the file to download.
+        :parameter: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
+        :parameter: name Name to give to the file once the download is completed.
+        :parameter: delegate An eventual delegate for this download.
 
         :return: A `TCBlobDownload` instance.
     */
@@ -89,11 +88,11 @@ public class TCBlobDownloadManager {
     /**
         Start downloading the file at the given URL.
 
-        :param: url NSURL of the file to download.
-        :param: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
-        :param: name Name to give to the file once the download is completed.
-        :param: progression A closure executed periodically when a chunk of data is received.
-        :param: completion A closure executed when the download has been completed.
+        :parameter: url NSURL of the file to download.
+        :parameter: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
+        :parameter: name Name to give to the file once the download is completed.
+        :parameter: progression A closure executed periodically when a chunk of data is received.
+        :parameter: completion A closure executed when the download has been completed.
 
         :return: A `TCBlobDownload` instance.
     */
@@ -109,10 +108,10 @@ public class TCBlobDownloadManager {
     
         :see: `TCBlobDownload -cancelWithResumeData:` to produce this data.
 
-        :param: resumeData Data blob produced by a previous download cancellation.
-        :param: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
-        :param: name Name to give to the file once the download is completed.
-        :param: delegate An eventual delegate for this download.
+        :parameter: resumeData Data blob produced by a previous download cancellation.
+        :parameter: directory Directory Where to copy the file once the download is completed. If `nil`, the file will be downloaded in the current user temporary directory/
+        :parameter: name Name to give to the file once the download is completed.
+        :parameter: delegate An eventual delegate for this download.
     
         :return: A `TCBlobDownload` instance.
     */
@@ -126,7 +125,7 @@ public class TCBlobDownloadManager {
     /**
         Gets the downloads in a given state currently being processed by the instance of `TCBlobDownloadManager`.
     
-        :param: state The state by which to filter the current downloads.
+        :parameter: state The state by which to filter the current downloads.
         
         :return: An `Array` of all current downloads with the given state.
     */
@@ -134,7 +133,7 @@ public class TCBlobDownloadManager {
         var downloads = [TCBlobDownload]()
 
         // TODO: make functional as soon as Dictionary supports reduce/filter.
-        for download in self.delegate.downloads.values {
+        for download in downloadDelegate.downloads.values {
             if state == nil || download.downloadTask.state == state {
                 downloads.append(download)
             }
@@ -144,23 +143,26 @@ public class TCBlobDownloadManager {
     }
 }
 
-
 class DownloadDelegate: NSObject, NSURLSessionDownloadDelegate {
-    var downloads: [Int: TCBlobDownload] = [:]
+    var downloads = [Int: TCBlobDownload]()
     let acceptableStatusCodes: Range<Int> = 200...299
-
     func validateResponse(response: NSHTTPURLResponse) -> Bool {
-        return contains(self.acceptableStatusCodes, response.statusCode)
+        return self.acceptableStatusCodes.contains(response.statusCode)
     }
-
+    func setNew(taskId : Int ,download :TCBlobDownload){
+        downloads[taskId] = download
+    }
     // MARK: NSURLSessionDownloadDelegate
-
+    
     func URLSession(session: NSURLSession, downloadTask: NSURLSessionDownloadTask, didResumeAtOffset fileOffset: Int64, expectedTotalBytes: Int64) {
-        println("Resume at offset: \(fileOffset) total expected: \(expectedTotalBytes)")
+        print("Resume at offset: \(fileOffset) total expected: \(expectedTotalBytes)")
     }
 
     func URLSession(session: NSURLSession, downloadTask: NSURLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        let download = self.downloads[downloadTask.taskIdentifier]!
+        
+        guard let download = self.downloads[downloadTask.taskIdentifier] else {
+            return
+        }
         let progress = totalBytesExpectedToWrite == NSURLSessionTransferSizeUnknown ? -1 : Float(totalBytesWritten) / Float(totalBytesExpectedToWrite)
 
         download.progress = progress
@@ -173,19 +175,25 @@ class DownloadDelegate: NSObject, NSURLSessionDownloadDelegate {
     }
 
     func URLSession(session: NSURLSession, downloadTask: NSURLSessionDownloadTask, didFinishDownloadingToURL location: NSURL) {
-        let download = self.downloads[downloadTask.taskIdentifier]!
-        var fileError: NSError?
-        var resultingURL: NSURL?
-
-        if NSFileManager.defaultManager().replaceItemAtURL(download.destinationURL, withItemAtURL: location, backupItemName: nil, options: nil, resultingItemURL: &resultingURL, error: &fileError) {
-            download.resultingURL = resultingURL
-        } else {
-            download.error = fileError
+        
+        guard let download = self.downloads[downloadTask.taskIdentifier] else {
+            return
         }
+        var resultingURL: NSURL?
+        do {
+            try NSFileManager.defaultManager().replaceItemAtURL(download.destinationURL, withItemAtURL: location, backupItemName: nil, options: [], resultingItemURL: &resultingURL)
+            download.resultingURL = resultingURL
+        }
+        catch let error as NSError {
+            download.error = error
+        }
+        
     }
 
     func URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError sessionError: NSError?) {
-        let download = self.downloads[task.taskIdentifier]!
+        guard let download = self.downloads[task.taskIdentifier] else{
+            return
+        }
         var error: NSError? = sessionError ?? download.error
         // Handle possible HTTP errors
         if let response = task.response as? NSHTTPURLResponse {
@@ -196,14 +204,11 @@ class DownloadDelegate: NSObject, NSURLSessionDownloadDelegate {
                 error = NSError(domain: kTCBlobDownloadErrorDomain,
                     code: TCBlobDownloadError.TCBlobDownloadHTTPError.rawValue,
                     userInfo: [kTCBlobDownloadErrorDescriptionKey: "Erroneous HTTP status code: \(response.statusCode)",
-                               kTCBlobDownloadErrorFailingURLKey: task.originalRequest.URL!,
+                               kTCBlobDownloadErrorFailingURLKey: task.originalRequest!.URL!,
                                kTCBlobDownloadErrorHTTPStatusKey: response.statusCode])
             }
         }
-
         // Remove the reference to the download
-        self.downloads.removeValueForKey(task.taskIdentifier)
-
         dispatch_async(dispatch_get_main_queue()) {
             download.delegate?.download(download, didFinishWithError: error, atLocation: download.resultingURL)
             download.completion?(error: error, location: download.resultingURL)
